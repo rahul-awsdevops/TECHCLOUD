@@ -1,0 +1,91 @@
+pipeline {
+    agent { label 'ecs-agent' }  // Use ECS agent for builds
+
+    environment {
+        AWS_REGION = "us-west-2"
+        EKS_CLUSTER_NAME = "my-eks-cluster"
+        ECR_REPO_FRONTEND = "<aws_account_id>.dkr.ecr.us-west-2.amazonaws.com/frontend-repo"
+        ECR_REPO_BACKEND = "<aws_account_id>.dkr.ecr.us-west-2.amazonaws.com/backend-repo"
+    }
+
+    stages {
+        
+        stage('Checkout Code') {
+            steps {
+                git branch: 'main', url: 'https://github.com/your-repo/3tier-app.git'
+            }
+        }
+
+        stage('SonarQube Analysis') {
+            steps {
+                script {
+                    withSonarQubeEnv('SonarQube') {
+                        sh 'sonar-scanner -Dsonar.projectKey=my-app -Dsonar.sources=.'
+                    }
+                }
+            }
+        }
+
+        stage('Build & Push Frontend') {
+            steps {
+                script {
+                    sh """
+                    docker build -t ${ECR_REPO_FRONTEND}:${BUILD_ID} -f frontend/Dockerfile frontend/
+                    aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO_FRONTEND}
+                    docker push ${ECR_REPO_FRONTEND}:${BUILD_ID}
+                    """
+                }
+            }
+        }
+
+        stage('Build & Push Backend') {
+            steps {
+                script {
+                    sh """
+                    docker build -t ${ECR_REPO_BACKEND}:${BUILD_ID} -f backend/Dockerfile backend/
+                    aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO_BACKEND}
+                    docker push ${ECR_REPO_BACKEND}:${BUILD_ID}
+                    """
+                }
+            }
+        }
+
+        stage('Trivy Security Scan') {
+            steps {
+                script {
+                    sh """
+                    trivy image ${ECR_REPO_FRONTEND}:${BUILD_ID}
+                    trivy image ${ECR_REPO_BACKEND}:${BUILD_ID}
+                    """
+                }
+            }
+        }
+
+        stage('Update Kubernetes Manifests') {
+            steps {
+                script {
+                    sh """
+                    sed -i 's|image:.*frontend-repo:.*|image: ${ECR_REPO_FRONTEND}:${BUILD_ID}|' k8s/frontend-deployment.yaml
+                    sed -i 's|image:.*backend-repo:.*|image: ${ECR_REPO_BACKEND}:${BUILD_ID}|' k8s/backend-deployment.yaml
+                    git add k8s/frontend-deployment.yaml k8s/backend-deployment.yaml
+                    git commit -m "Updated image tags to ${BUILD_ID}"
+                    git push origin main
+                    """
+                }
+            }
+        }
+
+        stage('Deploy to EKS') {
+            steps {
+                script {
+                    sh """
+                    aws eks --region ${AWS_REGION} update-kubeconfig --name ${EKS_CLUSTER_NAME}
+                    kubectl apply -f k8s/frontend-deployment.yaml
+                    kubectl apply -f k8s/backend-deployment.yaml
+                    """
+                }
+            }
+        }
+
+    }
+}

@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: rds-postgres-external-service
+spec:
+  type: ExternalName
+  externalName: rds-postgres-instance.cafg6cc2itih.us-east-1.rds.amazonaws.com

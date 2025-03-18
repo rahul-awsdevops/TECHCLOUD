@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nodejs-app-backend #nameofdeployment
+spec:
+  replicas: 1
+  selector: 
+    matchLabels:
+      app: nodejs-app-backend #matchlabelforpod
+  template: 
+    metadata:
+      labels: 
+        app: nodejs-app-backend #labelforpod
+    spec: 
+      containers:
+        - name: nodejs-app-container
+          image: 010526277866.dkr.ecr.us-east-1.amazonaws.com/docker-repo-ally:nodejs-app-k8s-pv1
+          ports:
+            - containerPort: 3000 #default-port-pgadmin
+          env:
+            - name: DB_USER
+              value: "dbadmin"
+#              valueFrom:
+#                secretKeyRef:
+#                  name: postgres-pgadmin-secret #fromsecret.yml 
+#                  key: pgadmin-email
+                  
+            - name: DB_PASSWORD
+              value: "dbadmin123"
+#              valueFrom:
+#                secretKeyRef:
+#                  name: postgres-pgadmin-secret
+#                  key: pgadmin-password
+
+            - name: DB_NAME
+              value: "techcloud_db" #postgres-database-name
+            - name: DB_HOST
+              value: "rds-postgres-external-service.default.svc.cluster.local" #postgres-service-name #this is coming from rds-postgres-external-name-service.yml
+            - name: DB_PORT
+              value: "5432"  #postgress-dafault-port
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nodejs-app-backend-service
+spec:
+  type: NodePort
+  selector:
+    app: nodejs-app-backend  #labelofpodsshouldmatch
+  ports:
+    - protocol: TCP
+      port: 3000
+      targetPort: 3000
+      nodePort: 32410 #(default range is 30000-32767) 
