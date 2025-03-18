@@ -41,7 +41,7 @@ const EnrollForm = () => {
     const apiBaseURL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
     try {
-      const response = await fetch(`${apiBaseURL}/api/enroll`, {
+      const response = await fetch(`${apiBaseURL}/enroll`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

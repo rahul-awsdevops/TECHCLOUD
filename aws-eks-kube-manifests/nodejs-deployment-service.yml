@@ -44,11 +44,10 @@ kind: Service
 metadata:
   name: nodejs-app-backend-service
 spec:
-  type: NodePort
+  type: ClusterIP
   selector:
     app: nodejs-app-backend  #labelofpodsshouldmatch
   ports:
     - protocol: TCP
       port: 3000
       targetPort: 3000
-      nodePort: 32410 #(default range is 30000-32767) 
