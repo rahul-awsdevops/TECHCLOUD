@@ -41,7 +41,7 @@ pool.query(createTableQuery)
   .catch((err) => console.error('Error creating table:', err));
 
 // API route to handle enrollment form submissions
-app.post('/api/enroll', async (req, res) => {
+app.post('/enroll', async (req, res) => {
   const { name, country, city, mobile, email, course, duration } = req.body;
 
   if (!name || !country || !city || !mobile || !email || !course || !duration) {

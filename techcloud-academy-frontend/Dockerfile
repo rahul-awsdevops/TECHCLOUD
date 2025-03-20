@@ -4,12 +4,15 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install
 COPY . .
-ARG REACT_APP_API_URL
-ENV REACT_APP_API_URL=${REACT_APP_API_URL}
 RUN npm run build
 
 # Stage 2: Serve with Nginx
 FROM nginx:alpine
+ENV NGINX_PORT=80
+ENV API_BACKEND_URL=my-backend-service
+# Copy Nginx template
+COPY nginx/templates /etc/nginx/templates/
 COPY --from=build /app/build /usr/share/nginx/html
-EXPOSE 80
+# Expose Nginx port
+EXPOSE ${NGINX_PORT}
 CMD ["nginx", "-g", "daemon off;"]
