@@ -52,8 +52,9 @@ RUN apt-get update && apt-get install -y \
 COPY --from=builder /aws-cli /aws-cli
 COPY --from=builder /aws-cli-bin/aws /usr/local/bin/aws
 COPY --from=builder /kubectl /usr/local/bin/kubectl
-COPY --from=builder /trivy/usr/local/bin/trivy /usr/local/bin/trivy
+COPY --from=builder /trivy/usr/bin/trivy /usr/local/bin/trivy
 COPY --from=builder /sonar-scanner /opt/sonar-scanner
+
 
 # Link sonar-scanner to PATH
 RUN ln -s /opt/sonar-scanner/bin/sonar-scanner /usr/local/bin/sonar-scanner
