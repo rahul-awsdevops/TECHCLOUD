@@ -28,14 +28,6 @@ RUN curl -LO https://s3.us-west-2.amazonaws.com/amazon-eks/1.31.3/2024-12-12/bin
 # Verify kubectl is available
 RUN kubectl version --client --output=yaml || echo "kubectl installed"    
 
-# Install Docker CLI (redundant as docker.io is already installed, can be skipped or version-locked)
-# RUN curl -fsSL https://get.docker.com | sh
-
-# Install kubectl
-RUN curl -LO "https://dl.k8s.io/release/$(curl -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" \
-    && chmod +x kubectl \
-    && mv kubectl /usr/local/bin/
-
 # Install Trivy for image scanning
 RUN curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh
 
