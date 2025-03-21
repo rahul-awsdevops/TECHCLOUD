@@ -10,6 +10,6 @@ server {
 
     # Proxy backend service
     location /enroll {
-        proxy_pass http://${API_BACKEND_URL};
+        proxy_pass http://${API_BACKEND_URL}:${API_BACKEND_PORT};
     }
 }

@@ -1,91 +1,125 @@
 pipeline {
-    agent { label 'ecs-agent' }  // Use ECS agent for builds
+    agent any
 
     environment {
-        AWS_REGION = "us-west-2"
-        EKS_CLUSTER_NAME = "my-eks-cluster"
-        ECR_REPO_FRONTEND = "<aws_account_id>.dkr.ecr.us-west-2.amazonaws.com/frontend-repo"
-        ECR_REPO_BACKEND = "<aws_account_id>.dkr.ecr.us-west-2.amazonaws.com/backend-repo"
+        REGISTRY = "676206914267.dkr.ecr.us-east-1.amazonaws.com"
+        BACKEND_REPO = "techcloud-academy-backend-apps"
+        FRONTEND_REPO = "techcloud-academy-frontend-apps"
+        AWS_REGION = "us-east-1"
+        SONAR_HOST_URL = "http://sonarqube.yourcompany.com"
+        SONAR_PROJECT_KEY_BACKEND = "backend-app"
+        SONAR_PROJECT_KEY_FRONTEND = "frontend-app"
+        SONAR_TOKEN = credentials('sonar-token')
     }
 
     stages {
-        
-        stage('Checkout Code') {
+        stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/your-repo/3tier-app.git'
+                script {
+                    checkout scm
+                    COMMIT_ID = sh(script: "git rev-parse --short=7 HEAD", returnStdout: true).trim()
+                    env.COMMIT_ID = COMMIT_ID
+                    echo "Using Commit ID: ${COMMIT_ID}"
+                }
             }
         }
 
-        stage('SonarQube Analysis') {
+        stage('SonarQube - Backend') {
             steps {
-                script {
+                dir('techcloud-academy-backend') {
                     withSonarQubeEnv('SonarQube') {
-                        sh 'sonar-scanner -Dsonar.projectKey=my-app -Dsonar.sources=.'
+                        sh """
+                        sonar-scanner \
+                        -Dsonar.projectKey=${SONAR_PROJECT_KEY_BACKEND} \
+                        -Dsonar.sources=. \
+                        -Dsonar.host.url=${SONAR_HOST_URL} \
+                        -Dsonar.login=${SONAR_TOKEN}
+                        """
                     }
                 }
             }
         }
 
-        stage('Build & Push Frontend') {
+        stage('SonarQube - Frontend') {
             steps {
-                script {
-                    sh """
-                    docker build -t ${ECR_REPO_FRONTEND}:${BUILD_ID} -f frontend/Dockerfile frontend/
-                    aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO_FRONTEND}
-                    docker push ${ECR_REPO_FRONTEND}:${BUILD_ID}
-                    """
+                dir('techcloud-academy-frontend') {
+                    withSonarQubeEnv('SonarQube') {
+                        sh """
+                        sonar-scanner \
+                        -Dsonar.projectKey=${SONAR_PROJECT_KEY_FRONTEND} \
+                        -Dsonar.sources=. \
+                        -Dsonar.host.url=${SONAR_HOST_URL} \
+                        -Dsonar.login=${SONAR_TOKEN}
+                        """
+                    }
                 }
             }
         }
 
         stage('Build & Push Backend') {
             steps {
-                script {
+                dir('techcloud-academy-backend') {
                     sh """
-                    docker build -t ${ECR_REPO_BACKEND}:${BUILD_ID} -f backend/Dockerfile backend/
-                    aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO_BACKEND}
-                    docker push ${ECR_REPO_BACKEND}:${BUILD_ID}
+                    docker build -t ${REGISTRY}/${BACKEND_REPO}:${COMMIT_ID} .
+                    trivy image --exit-code 1 --severity HIGH,CRITICAL ${REGISTRY}/${BACKEND_REPO}:${COMMIT_ID} || true
+                    aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${REGISTRY}
+                    docker push ${REGISTRY}/${BACKEND_REPO}:${COMMIT_ID}
                     """
                 }
             }
         }
 
-        stage('Trivy Security Scan') {
+        stage('Build & Push Frontend') {
             steps {
-                script {
+                dir('techcloud-academy-frontend') {
                     sh """
-                    trivy image ${ECR_REPO_FRONTEND}:${BUILD_ID}
-                    trivy image ${ECR_REPO_BACKEND}:${BUILD_ID}
+                    docker build --build-arg API_BACKEND_URL=nodejs-app-backend-service.default.svc.cluster.local --build-arg API_BACKEND_PORT=3000 -t ${REGISTRY}/${FRONTEND_REPO}:${COMMIT_ID} .
+                    trivy image --exit-code 1 --severity HIGH,CRITICAL ${REGISTRY}/${FRONTEND_REPO}:${COMMIT_ID} || true
+                    aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${REGISTRY}
+                    docker push ${REGISTRY}/${FRONTEND_REPO}:${COMMIT_ID}
                     """
                 }
             }
         }
-
-        stage('Update Kubernetes Manifests') {
+        stage('Artifact - Upload to S3') {
             steps {
                 script {
                     sh """
-                    sed -i 's|image:.*frontend-repo:.*|image: ${ECR_REPO_FRONTEND}:${BUILD_ID}|' k8s/frontend-deployment.yaml
-                    sed -i 's|image:.*backend-repo:.*|image: ${ECR_REPO_BACKEND}:${BUILD_ID}|' k8s/backend-deployment.yaml
-                    git add k8s/frontend-deployment.yaml k8s/backend-deployment.yaml
-                    git commit -m "Updated image tags to ${BUILD_ID}"
-                    git push origin main
+                    mkdir -p artifacts/${COMMIT_ID}
+                    cp -r aws-eks-kube-manifests/* artifacts/${COMMIT_ID}/
+                    cd artifacts
+                    zip -r ${COMMIT_ID}.zip ${COMMIT_ID}/
+                    aws s3 cp ${COMMIT_ID}.zip s3://${ARTIFACT_BUCKET}/artifacts/${COMMIT_ID}.zip --region ${AWS_REGION}
                     """
+                    echo "Artifact uploaded to s3://${ARTIFACT_BUCKET}/artifacts/${COMMIT_ID}.zip"
                 }
             }
         }
 
         stage('Deploy to EKS') {
             steps {
-                script {
-                    sh """
-                    aws eks --region ${AWS_REGION} update-kubeconfig --name ${EKS_CLUSTER_NAME}
-                    kubectl apply -f k8s/frontend-deployment.yaml
-                    kubectl apply -f k8s/backend-deployment.yaml
-                    """
-                }
+                sh """
+                sed -i "s|:latest|:${COMMIT_ID}|g" aws-eks-kube-manifests/nodejs-app-deployment.yml
+                sed -i "s|:latest|:${COMMIT_ID}|g" aws-eks-kube-manifests/react-frontend-deployment.yml
+                kubectl apply -f aws-eks-kube-manifests/
+                git add k8s/frontend-deployment.yaml k8s/backend-deployment.yaml
+                git commit -m "Updated image tags to ${BUILD_ID}"
+                git push origin main
+                """
             }
         }
+    }
 
+    post {
+        always {
+            cleanWs()
+        }
+    }
+}
+
+stage('Code Analysis') {
+    parallel {
+        stage('SonarQube - Backend') { ... }
+        stage('SonarQube - Frontend') { ... }
     }
 }
