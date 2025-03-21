@@ -34,10 +34,6 @@ RUN wget https://github.com/aquasecurity/trivy/releases/download/v0.60.0/trivy_0
     dpkg -i trivy_0.60.0_Linux-64bit.deb && \
     rm trivy_0.60.0_Linux-64bit.deb
 
-# Install aws-iam-authenticator from official EKS URL
-RUN curl -Lo aws-iam-authenticator https://amazon-eks.s3.us-west-2.amazonaws.com/1.30.0/2023-11-17/bin/linux/amd64/aws-iam-authenticator && \
-    chmod +x aws-iam-authenticator && \
-    mv aws-iam-authenticator /usr/local/bin/
 
 
 # Install SonarQube Scanner
