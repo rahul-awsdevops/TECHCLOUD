@@ -2,6 +2,8 @@ FROM jenkins/inbound-agent:latest
 
 USER root
 
+# openjdk-17-jdk is already installed in base image
+
 # Install dependencies in one layer
 RUN apt-get update && apt-get install -y  \
     docker.io \
@@ -12,9 +14,11 @@ RUN apt-get update && apt-get install -y  \
     nodejs \
     npm \
     ca-certificates \
+    gnupg \
+    wget \
     && rm -rf /var/lib/apt/lists/*
 
-# Install AWS CLI
+# Install AWS CLI v2
 RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" \
     && unzip awscliv2.zip \
     && ./aws/install \
@@ -25,11 +29,15 @@ RUN curl -LO https://s3.us-west-2.amazonaws.com/amazon-eks/1.31.3/2024-12-12/bin
     chmod +x ./kubectl && \
     mv ./kubectl /usr/local/bin/kubectl
 
-# Verify kubectl is available
-RUN kubectl version --client --output=yaml || echo "kubectl installed"    
+# Install Trivy using .deb file
+RUN wget https://github.com/aquasecurity/trivy/releases/download/v0.60.0/trivy_0.60.0_Linux-64bit.deb && \
+    dpkg -i trivy_0.60.0_Linux-64bit.deb && \
+    rm trivy_0.60.0_Linux-64bit.deb
 
-# Install Trivy for image scanning
-RUN curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh
+# Install aws-iam-authenticator from official EKS URL
+RUN curl -o aws-iam-authenticator https://amazon-eks.s3.us-west-2.amazonaws.com/1.30.3/2024-12-12/bin/linux/amd64/aws-iam-authenticator && \
+    chmod +x aws-iam-authenticator && \
+    mv aws-iam-authenticator /usr/local/bin/
 
 # Install SonarQube Scanner
 RUN curl -Lo sonarqube.zip https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip \
@@ -37,8 +45,8 @@ RUN curl -Lo sonarqube.zip https://binaries.sonarsource.com/Distribution/sonar-s
     && mv sonar-scanner-5.0.1.3006-linux /opt/sonar-scanner \
     && ln -s /opt/sonar-scanner/bin/sonar-scanner /usr/local/bin/sonar-scanner \
     && rm sonarqube.zip
+
 # Set Docker socket permissions
 RUN usermod -aG docker jenkins
 
 USER jenkins
-
